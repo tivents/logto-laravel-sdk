@@ -17,8 +17,8 @@ Ein Laravel-Package zur Integration von Logto Authentication. Unterstützt OIDC 
 
 ## Voraussetzungen
 
-- PHP 8.1 oder höher
-- Laravel 10.x oder 11.x
+- PHP 8.5 oder höher
+- Laravel 13.x
 - Composer
 - Eine Logto-Instanz (z.B. https://cloud.logto.io oder selbst gehostet)
 

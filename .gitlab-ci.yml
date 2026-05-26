@@ -1,0 +1,9 @@
+include:
+  - project: 'tivents/api-template'
+    file: '/.gitlab/composer-api.yaml'
+
+  - project: 'tivents/api-template'
+    file: '/.gitlab/test.yaml'
+
+  - project: 'tivents/packages/php-api-sdk'
+    file: '/.gitlab/deploy-composer-plugin.yaml'

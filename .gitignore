@@ -30,6 +30,7 @@ storage/*.key
 # Testing
 coverage
 .phpunit.result.cache
+.pest.cache
 
 # Local Configuration
 config/local/

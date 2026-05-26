@@ -1,0 +1,8 @@
+{
+    "minimumSupportedVersion": 200,
+    "highlight": true,
+    "cacheDirectory": ".pest.cache",
+    "coverage": false,
+    "processTimeout": 120,
+    "testSuite": "unit"
+}
