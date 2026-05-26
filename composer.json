@@ -1,0 +1,59 @@
+{
+    "name": "tivents/logto-laravel-sdk",
+    "description": "Laravel package for Logto authentication and authorization",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "laravel",
+        "logto",
+        "authentication",
+        "oidc",
+        "oauth2"
+    ],
+    "authors": [
+        {
+            "name": "TIVENTS",
+            "email": "entwicklung@tivents.de"
+        }
+    ],
+    "require": {
+        "php": "^8.5",
+        "laravel/framework": "^13.0",
+        "firebase/php-jwt": "^7.0",
+        "ext-json": "*"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^v11.1.0",
+        "pestphp/pest-plugin-laravel": "^4",
+        "rector/rector": "^2.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "TIVENTS\\LogtoLaravelSdk\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "TIVENTS\\LogtoLaravelSdk\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "TIVENTS\\LogtoLaravelSdk\\LogtoServiceProvider"
+            ],
+            "aliases": {
+                "Logto": "TIVENTS\\LogtoLaravelSdk\\Facades\\Logto"
+            }
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

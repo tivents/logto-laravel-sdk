@@ -1,0 +1,42 @@
+# Dependencies
+/vendor
+composer.lock
+
+# IDE
+.idea
+.phpstorm.meta.php
+*.swp
+*.swo
+*~
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# Environment Files
+.env
+.env.local
+.env.*.local
+
+# Cache
+bootstrap/cache
+.phpunit.cache
+.phpunit.cache.id
+
+# Logs
+*.log
+storage/*.key
+
+# Testing
+coverage
+.phpunit.result.cache
+
+# Local Configuration
+config/local/
+
+# Build
+build/
+dist/
+
+# Composer
+composer.phar

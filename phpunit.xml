@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.5/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache"
+         cacheIdFile=".phpunit.cache.id"
+         executionOrder="depends,defects"
+         requireCoverageMetadata="false"
+         beStrictAboutCoverageMetadata="false"
+         beStrictAboutOutputDuringTests="true"
+         failOnRisky="true"
+         failOnWarning="true">
+    <testsuites>
+        <testsuite name="Logto Laravel SDK Test Suite">
+            <directory>tests</directory>
+        </testsuite>
+    </testsuites>
+
+    <source>
+        <include>
+            <directory suffix=".php">src</directory>
+        </include>
+        <exclude>
+            <file>vendor/*</file>
+        </exclude>
+    </source>
+
+    <php>
+        <server name="APP_ENV" value="testing"/>
+        <server name="BCRYPT_ROUNDS" value="4"/>
+        <server name="CACHE_DRIVER" value="array"/>
+        <server name="DB_CONNECTION" value="testing"/>
+        <server name="MAIL_MAILER" value="array"/>
+        <server name="QUEUE_CONNECTION" value="sync"/>
+        <server name="SESSION_DRIVER" value="array"/>
+        <server name="SESSION_LIFETIME" value="120"/>
+        <server name="TZ" value="UTC"/>
+        
+        <!-- Logto Configuration -->
+        <server name="LOGTO_APP_ID" value="test-app-id"/>
+        <server name="LOGTO_APP_SECRET" value="test-app-secret"/>
+        <server name="LOGTO_ENDPOINT" value="https://test.logto.app"/>
+        <server name="LOGTO_OIDC_ENABLED" value="true"/>
+        <server name="LOGTO_OIDC_REDIRECT_URI" value="/auth/logto/callback"/>
+        <server name="LOGTO_OIDC_SCOPES" value="openid profile email"/>
+        <server name="LOGTO_OIDC_PKCE" value="true"/>
+        <server name="LOGTO_USER_MODEL" value="App\Models\User"/>
+        <server name="LOGTO_AUTO_CREATE_USERS" value="true"/>
+        <server name="LOGTO_AUTO_UPDATE_USERS" value="true"/>
+    </php>
+</phpunit>
