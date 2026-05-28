@@ -10,6 +10,10 @@ beforeEach(function () {
     Config::set('logto.tokens.refresh_token_lifetime', 86400);
     Config::set('logto.tokens.store_encrypted', false);
     
+    // Set encryption key for tests that use encrypted storage
+    Config::set('app.key', 'base64:' . base64_encode(str_repeat('a', 32)));
+    Config::set('app.cipher', 'AES-256-CBC');
+    
     Cache::flush();
 });
 

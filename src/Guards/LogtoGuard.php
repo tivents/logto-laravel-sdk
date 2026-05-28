@@ -22,7 +22,7 @@ class LogtoGuard implements Guard
     /**
      * Session store.
      */
-    protected ?Store $session;
+    protected ?Store $session = null;
 
     /**
      * The name of the guard.
@@ -55,7 +55,7 @@ class LogtoGuard implements Guard
          */
         protected ?Guard $fallbackGuard = null
     ) {
-        $this->session = Session::getFacadeRoot();
+        $this->session = Session::driver();
     }
 
     /**
