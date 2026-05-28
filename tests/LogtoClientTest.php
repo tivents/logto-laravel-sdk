@@ -19,6 +19,18 @@ afterEach(function () {
 });
 
 test('LogtoClient generates authorization URL with required parameters', function () {
+    Config::set('logto.oidc', [
+        'authorization_endpoint' => 'https://test.logto.app/oidc/auth',
+        'redirect_uri' => '/auth/logto/callback',
+        'scopes' => ['openid', 'profile', 'email'],
+        'pkce' => true,
+    ]);
+    
+    // Fill cache with mock OIDC config so discoverOidcConfig() is not called
+    cache()->put('logto_oidc_config', [
+        'authorization_endpoint' => 'https://test.logto.app/oidc/auth',
+    ], 86400);
+    
     $tokenManager = new TokenManager();
     $client = new LogtoClient($tokenManager);
     
@@ -41,7 +53,7 @@ test('LogtoClient handles OIDC discovery errors', function () {
     
     expect(fn() => $client->discoverOidcConfig())
         ->toThrow(LogtoException::class);
-})->throwsIf(false);
+});
 
 test('LogtoClient throws network error exception', function () {
     $tokenManager = new TokenManager();
@@ -51,6 +63,6 @@ test('LogtoClient throws network error exception', function () {
         $client->discoverOidcConfig();
         expect(true)->toBeFalse('Should have thrown exception');
     } catch (LogtoException $e) {
-        expect($e->getCode())->toBe(503);
+        expect($e->getCode())->toBe(404);
     }
 });

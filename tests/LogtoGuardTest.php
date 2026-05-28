@@ -1,11 +1,8 @@
 <?php
 
-use Illuminate\Foundation\Testing\TestCase;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Session;
-use Mockery;
 use TIVENTS\LogtoLaravelSdk\Guards\LogtoGuard;
 use TIVENTS\LogtoLaravelSdk\Services\LogtoClient;
 use TIVENTS\LogtoLaravelSdk\Services\TokenManager;

@@ -94,7 +94,7 @@ class LogtoServiceProvider extends ServiceProvider
         $router = $this->app->make(Router::class);
         
         // Only register routes if they haven't been registered already
-        if (!$router->hasNamedRoute('logto.callback')) {
+        if (!$router->has('logto.callback')) {
             $router->group([
                 'namespace' => 'TIVENTS\\LogtoLaravelSdk\\Controllers',
                 'prefix' => 'auth/logto',

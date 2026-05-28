@@ -4,7 +4,7 @@ use Illuminate\Support\Facades\Route;
 use TIVENTS\LogtoLaravelSdk\Controllers\AuthController;
 
 // Only register routes if they haven't been registered already
-if (!Route::hasNamedRoute('logto.callback')) {
+if (!Route::has('logto.callback')) {
     Route::group([
         'prefix' => 'auth/logto',
         'middleware' => ['web'],

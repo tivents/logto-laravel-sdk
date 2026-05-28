@@ -4,9 +4,8 @@ namespace TIVENTS\LogtoLaravelSdk\Services;
 
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
-use GuzzleHttp\Client;
-use GuzzleHttp\Exception\GuzzleException;
-use Illuminate\Http\Request;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -14,7 +13,7 @@ use TIVENTS\LogtoLaravelSdk\Exceptions\LogtoException;
 
 class LogtoClient
 {
-    protected Client $httpClient;
+    protected PendingRequest $httpClient;
     
     protected string $appId;
     
@@ -66,7 +65,7 @@ class LogtoClient
             cache()->put('logto_oidc_config', $config, 86400); // 24 hours
             
             return $config;
-        } catch (GuzzleException $e) {
+        } catch (ConnectionException $e) {
             throw LogtoException::networkError($e->getMessage());
         }
     }
@@ -170,7 +169,7 @@ class LogtoClient
             }
             
             return $data;
-        } catch (GuzzleException $e) {
+        } catch (ConnectionException $e) {
             throw LogtoException::networkError($e->getMessage());
         }
     }
@@ -204,7 +203,7 @@ class LogtoClient
             }
             
             return $response->json();
-        } catch (GuzzleException $e) {
+        } catch (ConnectionException $e) {
             throw LogtoException::networkError($e->getMessage());
         }
     }
@@ -236,7 +235,7 @@ class LogtoClient
             }
             
             return $response->json();
-        } catch (GuzzleException $e) {
+        } catch (ConnectionException $e) {
             throw LogtoException::networkError($e->getMessage());
         }
     }
@@ -340,6 +339,14 @@ class LogtoClient
     }
 
     /**
+     * Base64 URL encode.
+     */
+    protected function base64UrlEncode(string $input): string
+    {
+        return strtr(rtrim(base64_encode($input), '='), '+/', '-_');
+    }
+
+    /**
      * Base64 URL decode.
      */
     protected function base64UrlDecode(string $input): string
@@ -391,7 +398,7 @@ class LogtoClient
      */
     protected function generateCodeChallenge(string $codeVerifier): string
     {
-        return base64url_encode(hash('sha256', $codeVerifier, true));
+        return $this->base64UrlEncode(hash('sha256', $codeVerifier, true));
     }
 
     /**
@@ -455,7 +462,7 @@ class LogtoClient
             }
             
             return $response->json() ?? [];
-        } catch (GuzzleException $e) {
+        } catch (ConnectionException $e) {
             throw LogtoException::networkError($e->getMessage());
         }
     }
@@ -507,7 +514,7 @@ class LogtoClient
             }
             
             return $response->json();
-        } catch (GuzzleException $e) {
+        } catch (ConnectionException $e) {
             throw LogtoException::networkError($e->getMessage());
         }
     }
