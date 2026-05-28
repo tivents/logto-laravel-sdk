@@ -99,8 +99,8 @@ LOGTO_GUARD_PROVIDER=users
 2. Erstelle eine neue Application
 3. Wähle **Single Page Application** oder **Traditional Web Application**
 4. Konfiguriere die Redirect URIs:
-   - `http://localhost/auth/logto/callback` (für Entwicklung)
-   - `https://deine-domain.de/auth/logto/callback` (für Produktion)
+   - `http://localhost/auth/callback` (für Entwicklung)
+   - `https://deine-domain.de/auth/callback` (für Produktion)
 5. Konfiguriere die Post-Logout Redirect URIs:
    - `http://localhost/` (für Entwicklung)
    - `https://deine-domain.de/` (für Produktion)

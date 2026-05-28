@@ -9,7 +9,7 @@ beforeEach(function () {
     Config::set('logto.app_id', 'test-app-id');
     Config::set('logto.app_secret', 'test-app-secret');
     Config::set('logto.endpoint', 'https://test.logto.app');
-    Config::set('logto.oidc.redirect_uri', '/auth/logto/callback');
+    Config::set('logto.oidc.redirect_uri', '/auth/callback');
     Config::set('logto.oidc.scopes', ['openid', 'profile', 'email']);
     Config::set('logto.oidc.pkce', true);
 });
@@ -21,7 +21,7 @@ afterEach(function () {
 test('LogtoClient generates authorization URL with required parameters', function () {
     Config::set('logto.oidc', [
         'authorization_endpoint' => 'https://test.logto.app/oidc/auth',
-        'redirect_uri' => '/auth/logto/callback',
+        'redirect_uri' => '/auth/callback',
         'scopes' => ['openid', 'profile', 'email'],
         'pkce' => true,
     ]);
