@@ -45,9 +45,9 @@ class LogtoClient
     {
         try {
             if (!empty($this->oidcConfig['discovery_endpoint'])) {
-                $url = $this->oidcConfig['discovery_endpoint'];
+                $url = $this->stripBaseUrl($this->oidcConfig['discovery_endpoint']);
             } else {
-                $url = $this->endpoint . '/oidc/.well-known/openid-configuration';
+                $url = '/oidc/.well-known/openid-configuration';
             }
             
             $response = $this->httpClient->get($url);
@@ -137,16 +137,29 @@ class LogtoClient
         try {
             $config = $this->getOidcConfig();
             
+            // Extract relative path from token endpoint URL for proper HTTP client usage
             $tokenEndpoint = $config['token_endpoint'] 
                 ?? $this->oidcConfig['token_endpoint'] 
-                ?? $this->endpoint . '/oidc/token';
+                ?? '/oidc/token';
+            
+            // Remove base URI from endpoint if present (to avoid double URLs)
+            $tokenEndpoint = $this->stripBaseUrl($tokenEndpoint);
             
             $redirectUri = $this->oidcConfig['redirect_uri'] ?? '/auth/logto/callback';
+            
+            // Validate required configuration
+            if (empty($this->appId) || empty($this->appSecret)) {
+                throw LogtoException::configurationError(
+                    'Logto app_id and app_secret must be configured in your .env file'
+                );
+            }
             
             $params = [
                 'grant_type' => 'authorization_code',
                 'code' => $code,
                 'redirect_uri' => url($redirectUri),
+                'client_id' => $this->appId,
+                'client_secret' => $this->appSecret,
             ];
             
             // Add PKCE code verifier
@@ -154,12 +167,10 @@ class LogtoClient
                 $params['code_verifier'] = session()->pull('logto_code_verifier');
             }
             
-            // Use Basic Auth for client authentication (OIDC best practice)
-            // client_id and client_secret are sent via Authorization header, not in form params
-            $response = $this->httpClient->withBasicAuth($this->appId, $this->appSecret)
-                ->post($tokenEndpoint, [
-                    'form_params' => $params,
-                ]);
+            // Send as form data with client credentials in body
+            $response = $this->httpClient->post($tokenEndpoint, [
+                'form_params' => $params,
+            ]);
             
             if ($response->failed()) {
                 throw LogtoException::apiError(
@@ -189,19 +200,23 @@ class LogtoClient
         try {
             $config = $this->getOidcConfig();
             
+            // Extract relative path from token endpoint URL
             $tokenEndpoint = $config['token_endpoint'] 
                 ?? $this->oidcConfig['token_endpoint'] 
-                ?? $this->endpoint . '/oidc/token';
+                ?? '/oidc/token';
             
-            // Use Basic Auth for client authentication (OIDC best practice)
-            // client_id and client_secret are sent via Authorization header, not in form params
-            $response = $this->httpClient->withBasicAuth($this->appId, $this->appSecret)
-                ->post($tokenEndpoint, [
-                    'form_params' => [
-                        'grant_type' => 'refresh_token',
-                        'refresh_token' => $refreshToken,
-                    ],
-                ]);
+            // Remove base URI from endpoint if present (to avoid double URLs)
+            $tokenEndpoint = $this->stripBaseUrl($tokenEndpoint);
+            
+            // Send as form data with client credentials in body
+            $response = $this->httpClient->post($tokenEndpoint, [
+                'form_params' => [
+                    'client_id' => $this->appId,
+                    'client_secret' => $this->appSecret,
+                    'grant_type' => 'refresh_token',
+                    'refresh_token' => $refreshToken,
+                ],
+            ]);
             
             if ($response->failed()) {
                 throw LogtoException::apiError(
@@ -224,9 +239,11 @@ class LogtoClient
         try {
             $config = $this->getOidcConfig();
             
-            $userinfoEndpoint = $config['userinfo_endpoint'] 
-                ?? $this->oidcConfig['userinfo_endpoint'] 
-                ?? $this->endpoint . '/oidc/me';
+            $userinfoEndpoint = $this->stripBaseUrl(
+                $config['userinfo_endpoint'] 
+                    ?? $this->oidcConfig['userinfo_endpoint'] 
+                    ?? '/oidc/me'
+            );
             
             $response = $this->httpClient->get($userinfoEndpoint, [
                 'headers' => [
@@ -255,7 +272,9 @@ class LogtoClient
     {
         try {
             $config = $this->getOidcConfig();
-            $jwksUri = $config['jwks_uri'] ?? $this->oidcConfig['jwks_uri'] ?? $this->endpoint . '/oidc/jwks';
+            $jwksUri = $this->stripBaseUrl(
+                $config['jwks_uri'] ?? $this->oidcConfig['jwks_uri'] ?? '/oidc/jwks'
+            );
             
             // Fetch JWKS
             $jwksResponse = $this->httpClient->get($jwksUri);
@@ -499,21 +518,25 @@ class LogtoClient
         try {
             $config = $this->getOidcConfig();
             
+            // Extract relative path from token endpoint URL
             $tokenEndpoint = $config['token_endpoint'] 
                 ?? $this->oidcConfig['token_endpoint'] 
-                ?? $this->endpoint . '/oidc/token';
+                ?? '/oidc/token';
+            
+            // Remove base URI from endpoint if present (to avoid double URLs)
+            $tokenEndpoint = $this->stripBaseUrl($tokenEndpoint);
             
             $scopeString = $scopes ? implode(' ', $scopes) : '';
             
-            // Use Basic Auth for client authentication (OIDC best practice)
-            // client_id and client_secret are sent via Authorization header, not in form params
-            $response = $this->httpClient->withBasicAuth($this->appId, $this->appSecret)
-                ->post($tokenEndpoint, [
-                    'form_params' => [
-                        'grant_type' => 'client_credentials',
-                        'scope' => $scopeString,
-                    ],
-                ]);
+            // Send as form data with client credentials in body
+            $response = $this->httpClient->post($tokenEndpoint, [
+                'form_params' => [
+                    'client_id' => $this->appId,
+                    'client_secret' => $this->appSecret,
+                    'grant_type' => 'client_credentials',
+                    'scope' => $scopeString,
+                ],
+            ]);
             
             if ($response->failed()) {
                 throw LogtoException::apiError(
@@ -526,5 +549,26 @@ class LogtoClient
         } catch (ConnectionException $e) {
             throw LogtoException::networkError($e->getMessage());
         }
+    }
+
+    /**
+     * Strip base URL from a full URL to get relative path.
+     * This prevents double URLs when using HTTP client with base_uri.
+     */
+    protected function stripBaseUrl(string $url): string
+    {
+        // If URL starts with http:// or https://, extract the path
+        if (str_starts_with($url, 'http://') || str_starts_with($url, 'https://')) {
+            $parsed = parse_url($url);
+            return $parsed['path'] ?? '/';
+        }
+        
+        // If URL starts with /, it's already relative
+        if (str_starts_with($url, '/')) {
+            return $url;
+        }
+        
+        // Otherwise, prepend /
+        return '/' . ltrim($url, '/');
     }
 }
