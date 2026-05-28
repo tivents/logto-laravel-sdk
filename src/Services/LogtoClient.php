@@ -144,8 +144,6 @@ class LogtoClient
             $redirectUri = $this->oidcConfig['redirect_uri'] ?? '/auth/logto/callback';
             
             $params = [
-                'client_id' => $this->appId,
-                'client_secret' => $this->appSecret,
                 'grant_type' => 'authorization_code',
                 'code' => $code,
                 'redirect_uri' => url($redirectUri),
@@ -156,6 +154,8 @@ class LogtoClient
                 $params['code_verifier'] = session()->pull('logto_code_verifier');
             }
             
+            // Use Basic Auth for client authentication (OIDC best practice)
+            // client_id and client_secret are sent via Authorization header, not in form params
             $response = $this->httpClient->withBasicAuth($this->appId, $this->appSecret)
                 ->post($tokenEndpoint, [
                     'form_params' => $params,
@@ -193,11 +193,11 @@ class LogtoClient
                 ?? $this->oidcConfig['token_endpoint'] 
                 ?? $this->endpoint . '/oidc/token';
             
+            // Use Basic Auth for client authentication (OIDC best practice)
+            // client_id and client_secret are sent via Authorization header, not in form params
             $response = $this->httpClient->withBasicAuth($this->appId, $this->appSecret)
                 ->post($tokenEndpoint, [
                     'form_params' => [
-                        'client_id' => $this->appId,
-                        'client_secret' => $this->appSecret,
                         'grant_type' => 'refresh_token',
                         'refresh_token' => $refreshToken,
                     ],
@@ -505,11 +505,11 @@ class LogtoClient
             
             $scopeString = $scopes ? implode(' ', $scopes) : '';
             
+            // Use Basic Auth for client authentication (OIDC best practice)
+            // client_id and client_secret are sent via Authorization header, not in form params
             $response = $this->httpClient->withBasicAuth($this->appId, $this->appSecret)
                 ->post($tokenEndpoint, [
                     'form_params' => [
-                        'client_id' => $this->appId,
-                        'client_secret' => $this->appSecret,
                         'grant_type' => 'client_credentials',
                         'scope' => $scopeString,
                     ],
