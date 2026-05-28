@@ -158,8 +158,6 @@ class LogtoClient
                 'grant_type' => 'authorization_code',
                 'code' => $code,
                 'redirect_uri' => url($redirectUri),
-                'client_id' => $this->appId,
-                'client_secret' => $this->appSecret,
             ];
             
             // Add PKCE code verifier
@@ -167,10 +165,12 @@ class LogtoClient
                 $params['code_verifier'] = session()->pull('logto_code_verifier');
             }
             
-            // Send as form data with client credentials in body
-            $response = $this->httpClient->post($tokenEndpoint, [
-                'form_params' => $params,
-            ]);
+            // Use Basic Auth for client authentication (required by Logto)
+            // client_id and client_secret are sent via Authorization header
+            $response = $this->httpClient->withBasicAuth($this->appId, $this->appSecret)
+                ->post($tokenEndpoint, [
+                    'form_params' => $params,
+                ]);
             
             if ($response->failed()) {
                 throw LogtoException::apiError(
@@ -208,15 +208,15 @@ class LogtoClient
             // Remove base URI from endpoint if present (to avoid double URLs)
             $tokenEndpoint = $this->stripBaseUrl($tokenEndpoint);
             
-            // Send as form data with client credentials in body
-            $response = $this->httpClient->post($tokenEndpoint, [
-                'form_params' => [
-                    'client_id' => $this->appId,
-                    'client_secret' => $this->appSecret,
-                    'grant_type' => 'refresh_token',
-                    'refresh_token' => $refreshToken,
-                ],
-            ]);
+            // Use Basic Auth for client authentication (required by Logto)
+            // client_id and client_secret are sent via Authorization header
+            $response = $this->httpClient->withBasicAuth($this->appId, $this->appSecret)
+                ->post($tokenEndpoint, [
+                    'form_params' => [
+                        'grant_type' => 'refresh_token',
+                        'refresh_token' => $refreshToken,
+                    ],
+                ]);
             
             if ($response->failed()) {
                 throw LogtoException::apiError(
@@ -528,15 +528,15 @@ class LogtoClient
             
             $scopeString = $scopes ? implode(' ', $scopes) : '';
             
-            // Send as form data with client credentials in body
-            $response = $this->httpClient->post($tokenEndpoint, [
-                'form_params' => [
-                    'client_id' => $this->appId,
-                    'client_secret' => $this->appSecret,
-                    'grant_type' => 'client_credentials',
-                    'scope' => $scopeString,
-                ],
-            ]);
+            // Use Basic Auth for client authentication (required by Logto)
+            // client_id and client_secret are sent via Authorization header
+            $response = $this->httpClient->withBasicAuth($this->appId, $this->appSecret)
+                ->post($tokenEndpoint, [
+                    'form_params' => [
+                        'grant_type' => 'client_credentials',
+                        'scope' => $scopeString,
+                    ],
+                ]);
             
             if ($response->failed()) {
                 throw LogtoException::apiError(
