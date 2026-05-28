@@ -90,7 +90,13 @@ class LogtoClient
             ?? $this->endpoint . '/oidc/auth';
         
         $redirectUri = $this->oidcConfig['redirect_uri'] ?? '/auth/logto/callback';
-        $scopes = implode(' ', $this->oidcConfig['scopes'] ?? ['openid', 'profile', 'email']);
+        $scopes = $this->oidcConfig['scopes'] ?? ['openid', 'profile', 'email'];
+        
+        // Ensure 'openid' scope is present when using nonce parameter (OIDC requirement)
+        if (!in_array('openid', $scopes)) {
+            $scopes[] = 'openid';
+        }
+        $scopes = implode(' ', $scopes);
         
         // Generate state and nonce for CSRF protection
         $state ??= Str::random(40);

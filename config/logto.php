@@ -28,8 +28,9 @@ return [
         
         /**
          * Scopes to request during authentication
+         * Use comma-separated values in .env: LOGTO_OIDC_SCOPES=openid,profile,email
          */
-        'scopes' => explode(' ', env('LOGTO_OIDC_SCOPES', 'openid profile email')),
+        'scopes' => array_filter(explode(',', env('LOGTO_OIDC_SCOPES', 'openid,profile,email'))),
         
         /**
          * PKCE support for authorization code flow

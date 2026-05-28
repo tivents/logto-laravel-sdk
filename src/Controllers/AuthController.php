@@ -34,7 +34,18 @@ class AuthController extends Controller
         try {
             // Validate required parameters
             if (!$request->has('code')) {
-                throw LogtoException::authenticationFailed('Authorization code is required');
+                // If no authorization code, redirect to Logto login with helpful message
+                // This typically happens when accessing the callback URL directly
+                // instead of being redirected from Logto after successful authentication
+                try {
+                    $loginUrl = $this->client->getAuthorizationUrl();
+                    return Redirect::to($loginUrl)
+                        ->with('error', 'Please authenticate through Logto first.');
+                } catch (\Exception $e) {
+                    // If we can't get the login URL, redirect to home with error
+                    return Redirect::to('/')
+                        ->with('error', 'Logto authentication not configured. Please check your Logto settings.');
+                }
             }
             
             $code = $request->get('code');
