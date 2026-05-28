@@ -112,6 +112,29 @@ class LogtoServiceProvider extends ServiceProvider
                     'as' => 'logto.logout',
                     'middleware' => ['auth:' . config('logto.guard.name', 'logto')],
                 ]);
+
+                // Redirect to Logto for login
+                $router->get('/login', [
+                    'uses' => 'AuthController@redirectToLogto',
+                    'as' => 'logto.login',
+                    'middleware' => ['guest:' . config('logto.guard.name', 'logto')],
+                ]);
+
+                // API endpoints (for authenticated users)
+                $router->group([
+                    'prefix' => 'api',
+                    'middleware' => ['auth:' . config('logto.guard.name', 'logto')],
+                ], function (Router $router): void {
+                    $router->get('/user', [
+                        'uses' => 'AuthController@userInfo',
+                        'as' => 'logto.api.user',
+                    ]);
+
+                    $router->post('/refresh', [
+                        'uses' => 'AuthController@refreshToken',
+                        'as' => 'logto.api.refresh',
+                    ]);
+                });
             });
         }
     }
