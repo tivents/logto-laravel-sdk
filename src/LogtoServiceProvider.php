@@ -61,6 +61,9 @@ class LogtoServiceProvider extends ServiceProvider
             __DIR__ . '/../database/migrations' => database_path('migrations'),
         ], 'logto-migrations');
 
+        // Register the guard in auth config
+        $this->registerGuardInAuthConfig();
+
         // Register routes
         $this->registerRoutes();
 
@@ -69,6 +72,24 @@ class LogtoServiceProvider extends ServiceProvider
 
         // Register Blade directives
         $this->registerBladeDirectives();
+    }
+
+    /**
+     * Register the guard in Laravel's auth configuration.
+     */
+    protected function registerGuardInAuthConfig(): void
+    {
+        $guardName = config('logto.guard.name', 'logto');
+        
+        // Only add the guard if it doesn't already exist in the config
+        $guards = config('auth.guards', []);
+        
+        if (!isset($guards[$guardName])) {
+            config(['auth.guards.' . $guardName => [
+                'driver' => 'session',
+                'provider' => config('logto.guard.provider', 'users'),
+            ]]);
+        }
     }
 
     /**
