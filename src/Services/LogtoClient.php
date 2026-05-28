@@ -156,9 +156,10 @@ class LogtoClient
                 $params['code_verifier'] = session()->pull('logto_code_verifier');
             }
             
-            $response = $this->httpClient->post($tokenEndpoint, [
-                'form_params' => $params,
-            ]);
+            $response = $this->httpClient->withBasicAuth($this->appId, $this->appSecret)
+                ->post($tokenEndpoint, [
+                    'form_params' => $params,
+                ]);
             
             if ($response->failed()) {
                 throw LogtoException::apiError(
@@ -192,14 +193,15 @@ class LogtoClient
                 ?? $this->oidcConfig['token_endpoint'] 
                 ?? $this->endpoint . '/oidc/token';
             
-            $response = $this->httpClient->post($tokenEndpoint, [
-                'form_params' => [
-                    'client_id' => $this->appId,
-                    'client_secret' => $this->appSecret,
-                    'grant_type' => 'refresh_token',
-                    'refresh_token' => $refreshToken,
-                ],
-            ]);
+            $response = $this->httpClient->withBasicAuth($this->appId, $this->appSecret)
+                ->post($tokenEndpoint, [
+                    'form_params' => [
+                        'client_id' => $this->appId,
+                        'client_secret' => $this->appSecret,
+                        'grant_type' => 'refresh_token',
+                        'refresh_token' => $refreshToken,
+                    ],
+                ]);
             
             if ($response->failed()) {
                 throw LogtoException::apiError(
@@ -503,14 +505,15 @@ class LogtoClient
             
             $scopeString = $scopes ? implode(' ', $scopes) : '';
             
-            $response = $this->httpClient->post($tokenEndpoint, [
-                'form_params' => [
-                    'client_id' => $this->appId,
-                    'client_secret' => $this->appSecret,
-                    'grant_type' => 'client_credentials',
-                    'scope' => $scopeString,
-                ],
-            ]);
+            $response = $this->httpClient->withBasicAuth($this->appId, $this->appSecret)
+                ->post($tokenEndpoint, [
+                    'form_params' => [
+                        'client_id' => $this->appId,
+                        'client_secret' => $this->appSecret,
+                        'grant_type' => 'client_credentials',
+                        'scope' => $scopeString,
+                    ],
+                ]);
             
             if ($response->failed()) {
                 throw LogtoException::apiError(
