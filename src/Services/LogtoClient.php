@@ -208,8 +208,8 @@ class LogtoClient
         // Try to use SDK adapter first
         if ($this->sdkAdapter) {
             try {
-                $client = $this->sdkAdapter->getSdkClient();
-                $oidcCore = $client->oidcCore;
+                $endpoint = rtrim(config('logto.endpoint'), '/');
+                $oidcCore = OidcCore::create($endpoint);
                 
                 // The OIDC metadata contains the configuration
                 $config = (array) $oidcCore->metadata;

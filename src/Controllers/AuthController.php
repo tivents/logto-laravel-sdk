@@ -53,7 +53,7 @@ class AuthController extends Controller
             if (!$request->has('code')) {
                 // If no authorization code, redirect to Logto login with helpful message
                 try {
-                    $loginUrl = $this->client->getAuthorizationUrl();
+                    $loginUrl = $this->client->getAuthorizationUrlLegacy();
                     return Redirect::to($loginUrl)
                         ->with('error', 'Please authenticate through Logto first.');
                 } catch (\Exception $e) {
@@ -62,12 +62,13 @@ class AuthController extends Controller
                 }
             }
             
-            // Use the SDK adapter to handle the callback
-            // This will validate state, exchange code, get tokens and user info
-            $result = $this->sdkAdapter->handleSignInCallback($redirectUri);
+            // Use the legacy client to handle the callback (consistent with redirectToLogto)
+            // This will exchange code for tokens and get user info
+            $code = $request->get('code');
+            $tokens = $this->client->exchangeCodeForTokensLegacy($code);
+            $userInfo = $this->client->getUserInfoLegacy($tokens['access_token']);
             
-            $tokens = $result['tokens'];
-            $userInfo = $result['user_info'];
+            $result = ['tokens' => $tokens, 'user_info' => $userInfo];
             
             // Validate ID token if present (using the client's method)
             if (isset($tokens['id_token'])) {
@@ -85,7 +86,7 @@ class AuthController extends Controller
             
             // Sync tokens with TokenManager
             if (isset($tokens['access_token'])) {
-                $this->sdkAdapter->getTokenManager()->storeTokens(
+                $this->client->getTokenManager()->storeTokens(
                     'sdk_user', // Will be updated with actual user ID by guard
                     $tokens
                 );
@@ -104,7 +105,7 @@ class AuthController extends Controller
             
             // Update tokens with the actual user ID
             if (isset($tokens['access_token']) && $user) {
-                $this->sdkAdapter->getTokenManager()->storeTokens(
+                $this->client->getTokenManager()->storeTokens(
                     $user->getAuthIdentifier(),
                     $tokens
                 );
