@@ -556,6 +556,12 @@ class LogtoClient
             $keys = [];
             
             foreach ($jwks['keys'] as $key) {
+                // Only include keys that have the required fields for RSA (n and e)
+                // Skip EC or other key types that don't have these fields
+                if (!isset($key['n']) || !isset($key['e'])) {
+                    continue;
+                }
+                
                 $keys[] = [
                     'kty' => $key['kty'],
                     'use' => $key['use'],

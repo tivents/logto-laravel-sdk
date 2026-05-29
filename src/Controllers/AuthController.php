@@ -97,7 +97,13 @@ class AuthController extends Controller
             $guard = Auth::guard($guardName);
             
             // Use the guard to handle user creation/lookup
-            $user = $guard->handleCallback($request);
+            if (method_exists($guard, 'handleCallback')) {
+                $user = $guard->handleCallback($request);
+            } else {
+                throw LogtoException::authenticationFailed(
+                    'Logto guard not properly configured. Make sure the LogtoServiceProvider is registered.'
+                );
+            }
             
             if (!$user) {
                 throw LogtoException::authenticationFailed('Failed to authenticate user');
