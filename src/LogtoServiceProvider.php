@@ -58,9 +58,6 @@ class LogtoServiceProvider extends ServiceProvider
         // Register the main Logto service
         $this->app->singleton('logto', fn($app) => $app->make(LogtoClient::class));
 
-        // Also bind the SDK adapter to the container for direct access
-        $this->app->bind(LogtoSdkAdapter::class, fn($app) => $app->make(LogtoSdkAdapter::class));
-
         // Register Auth Guard
         $this->registerAuthGuard();
     }
