@@ -39,14 +39,25 @@ class LogtoSdkAdapter implements Storage
 
     /**
      * Create and return the official Logto SDK client instance.
+     * Uses lazy initialization to avoid unnecessary network requests.
      *
      * @return LogtoSdkClient
+     * @throws LogtoException
      */
     public function getSdkClient(): LogtoSdkClient
     {
         if ($this->sdkClient === null) {
-            $config = $this->createLogtoConfig();
-            $this->sdkClient = new LogtoSdkClient($config, $this);
+            // Set reasonable memory limit for SDK operations
+            $oldMemoryLimit = ini_get('memory_limit');
+            @ini_set('memory_limit', '256M');
+            
+            try {
+                $config = $this->createLogtoConfig();
+                $this->sdkClient = new LogtoSdkClient($config, $this);
+            } finally {
+                // Always restore memory limit
+                @ini_set('memory_limit', $oldMemoryLimit ?? '128M');
+            }
         }
 
         return $this->sdkClient;
@@ -133,34 +144,43 @@ class LogtoSdkAdapter implements Storage
     public function handleSignInCallback(string $redirectUri): array
     {
         try {
-            $client = $this->getSdkClient();
+            // Set memory limit for callback processing
+            $oldMemoryLimit = ini_get('memory_limit');
+            @ini_set('memory_limit', '256M');
+            
+            try {
+                $client = $this->getSdkClient();
 
-            // Store the redirect URI for validation in the SDK
-            Session::put('logto_sdk_redirect_uri', $redirectUri);
+                // Store the redirect URI for validation in the SDK
+                Session::put('logto_sdk_redirect_uri', $redirectUri);
 
-            // Handle the callback - this will validate state, exchange code, etc.
-            $client->handleSignInCallback();
+                // Handle the callback - this will validate state, exchange code, etc.
+                $client->handleSignInCallback();
 
-            // Get tokens and user info
-            $idToken = $client->getIdToken();
-            $accessToken = $client->getAccessToken();
-            $refreshToken = $client->getRefreshToken();
+                // Get tokens and user info
+                $idToken = $client->getIdToken();
+                $accessToken = $client->getAccessToken();
+                $refreshToken = $client->getRefreshToken();
 
-            $tokens = array_filter([
-                'id_token' => $idToken,
-                'access_token' => $accessToken,
-                'refresh_token' => $refreshToken,
-                'token_type' => 'Bearer',
-            ]);
+                $tokens = array_filter([
+                    'id_token' => $idToken,
+                    'access_token' => $accessToken,
+                    'refresh_token' => $refreshToken,
+                    'token_type' => 'Bearer',
+                ]);
 
-            // Get user information
-            $userInfo = $this->getUserInfo();
+                // Get user information
+                $userInfo = $this->getUserInfo();
 
-            return [
-                'tokens' => $tokens,
-                'user_info' => $userInfo,
-            ];
+                return [
+                    'tokens' => $tokens,
+                    'user_info' => $userInfo,
+                ];
+            } finally {
+                @ini_set('memory_limit', $oldMemoryLimit ?? '128M');
+            }
         } catch (\Exception $e) {
+            @ini_set('memory_limit', $oldMemoryLimit ?? '128M');
             Log::error('Failed to handle sign-in callback: ' . $e->getMessage());
             throw LogtoException::authenticationFailed('Failed to handle sign-in callback: ' . $e->getMessage());
         }

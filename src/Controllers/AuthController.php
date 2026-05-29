@@ -136,6 +136,7 @@ class AuthController extends Controller
 
     /**
      * Handle user logout.
+     * Uses manual logout URL generation to avoid SDK memory issues.
      */
     public function logout(Request $request): RedirectResponse
     {
@@ -146,9 +147,6 @@ class AuthController extends Controller
         $userInfo = $guard->getUserInfo();
         $idToken = $userInfo['id_token'] ?? null;
         
-        // Clear SDK session
-        $this->sdkAdapter->clearSession();
-        
         // Logout from Laravel
         $guard->logout();
         
@@ -156,17 +154,23 @@ class AuthController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
         
-        // Generate logout URL using SDK adapter
-        $postLogoutRedirectUri = config('logto.oidc.post_logout_redirect_uri', '/');
-        $logoutUrl = $this->sdkAdapter->getSignOutUrl($postLogoutRedirectUri, $idToken);
-        
-        // Redirect to Logto logout
-        return Redirect::to($logoutUrl)
-            ->with('success', 'Successfully logged out');
+        // Generate logout URL using manual method (avoid SDK memory issues)
+        try {
+            $postLogoutRedirectUri = config('logto.oidc.post_logout_redirect_uri', '/');
+            $logoutUrl = $this->client->logoutLegacy($idToken, $postLogoutRedirectUri);
+            
+            return Redirect::to($logoutUrl)
+                ->with('success', 'Successfully logged out');
+        } catch (LogtoException $e) {
+            return Redirect::to($postLogoutRedirectUri ?? '/')
+                ->with('success', 'Successfully logged out');
+        }
     }
 
     /**
      * Redirect to Logto for authentication.
+     * Uses manual URL generation to avoid SDK memory issues during initial request.
+     * The SDK is used in the callback where it's more appropriate.
      */
     public function redirectToLogto(Request $request): RedirectResponse
     {
@@ -177,10 +181,11 @@ class AuthController extends Controller
             Session::put('url.intended', $request->get('redirect_uri'));
         }
         
-        // Generate authorization URL using SDK adapter
+        // Generate authorization URL using manual method
+        // (SDK is used in callback where session is already established)
         try {
             $redirectUri = url(config('logto.oidc.redirect_uri', '/auth/logto/callback'));
-            $authUrl = $this->sdkAdapter->getSignInUrl($redirectUri);
+            $authUrl = $this->client->getAuthorizationUrlLegacy(null, null, $redirectUri);
             
             return Redirect::to($authUrl);
         } catch (LogtoException $e) {
