@@ -598,7 +598,7 @@ class LogtoClient
             
             return $claims;
         } catch (\Exception $e) {
-            if (Log::isEnabled()) {
+            if (config('logto.logging.enabled')) {
                 Log::error('ID token validation failed: ' . $e->getMessage());
             }
             throw LogtoException::invalidToken($e->getMessage());
