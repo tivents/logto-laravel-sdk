@@ -51,6 +51,14 @@ class LogtoClient
     }
 
     /**
+     * Get the TokenManager instance.
+     */
+    public function getTokenManager(): TokenManager
+    {
+        return $this->tokenManager;
+    }
+
+    /**
      * Set the SDK adapter instance.
      */
     public function setSdkAdapter(LogtoSdkAdapter $sdkAdapter): void
