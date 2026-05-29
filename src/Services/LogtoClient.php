@@ -13,7 +13,7 @@ use TIVENTS\LogtoLaravelSdk\Exceptions\LogtoException;
 
 class LogtoClient
 {
-    protected PendingRequest $httpClient;
+    protected ?PendingRequest $httpClient = null;
     
     protected string $appId;
     
@@ -22,13 +22,16 @@ class LogtoClient
     protected string $endpoint;
     
     protected array $oidcConfig;
+    
+    protected ?LogtoSdkAdapter $sdkAdapter = null;
 
-    public function __construct(protected TokenManager $tokenManager)
+    public function __construct(protected TokenManager $tokenManager, ?LogtoSdkAdapter $sdkAdapter = null)
     {
         $this->appId = config('logto.app_id');
         $this->appSecret = config('logto.app_secret');
         $this->endpoint = rtrim((string) config('logto.endpoint'), '/');
         $this->oidcConfig = config('logto.oidc', []);
+        $this->sdkAdapter = $sdkAdapter;
         
         $this->httpClient = Http::withOptions([
             'base_uri' => $this->endpoint,
@@ -39,9 +42,194 @@ class LogtoClient
     }
 
     /**
+     * Get the SDK adapter instance.
+     */
+    public function getSdkAdapter(): ?LogtoSdkAdapter
+    {
+        return $this->sdkAdapter;
+    }
+
+    /**
+     * Set the SDK adapter instance.
+     */
+    public function setSdkAdapter(LogtoSdkAdapter $sdkAdapter): void
+    {
+        $this->sdkAdapter = $sdkAdapter;
+    }
+
+    /**
+     * Check if SDK adapter is available.
+     */
+    public function hasSdkAdapter(): bool
+    {
+        return $this->sdkAdapter !== null;
+    }
+
+    /**
+     * Get sign-in URL using the official SDK.
+     *
+     * @param string $redirectUri The redirect URI after authentication
+     * @param array $extraParams Additional query parameters
+     * @return string
+     */
+    public function getSdkSignInUrl(string $redirectUri, array $extraParams = []): string
+    {
+        if (!$this->sdkAdapter) {
+            throw LogtoException::configurationError('SDK adapter not available');
+        }
+        return $this->sdkAdapter->getSignInUrl($redirectUri, $extraParams);
+    }
+
+    /**
+     * Handle sign-in callback using the official SDK.
+     *
+     * @param string $redirectUri The expected redirect URI
+     * @return array{tokens: array, user_info: array}
+     */
+    public function handleSdkCallback(string $redirectUri): array
+    {
+        if (!$this->sdkAdapter) {
+            throw LogtoException::configurationError('SDK adapter not available');
+        }
+        return $this->sdkAdapter->handleSignInCallback($redirectUri);
+    }
+
+    /**
+     * Get sign-out URL using the official SDK.
+     *
+     * @param string|null $postLogoutRedirectUri The URI to redirect to after logout
+     * @param string|null $idTokenHint The ID token for logout hint
+     * @return string
+     */
+    public function getSdkSignOutUrl(?string $postLogoutRedirectUri = null, ?string $idTokenHint = null): string
+    {
+        if (!$this->sdkAdapter) {
+            throw LogtoException::configurationError('SDK adapter not available');
+        }
+        return $this->sdkAdapter->getSignOutUrl($postLogoutRedirectUri, $idTokenHint);
+    }
+
+    /**
+     * Get user information using the official SDK.
+     *
+     * @return array
+     */
+    public function getSdkUserInfo(): array
+    {
+        if (!$this->sdkAdapter) {
+            throw LogtoException::configurationError('SDK adapter not available');
+        }
+        return $this->sdkAdapter->getUserInfo();
+    }
+
+    /**
+     * Refresh access token using the official SDK.
+     *
+     * @return array
+     */
+    public function refreshSdkAccessToken(): array
+    {
+        if (!$this->sdkAdapter) {
+            throw LogtoException::configurationError('SDK adapter not available');
+        }
+        return $this->sdkAdapter->refreshAccessToken();
+    }
+
+    /**
+     * Clear the current authentication session.
+     */
+    public function clearSdkSession(): void
+    {
+        if ($this->sdkAdapter) {
+            $this->sdkAdapter->clearSession();
+        }
+    }
+
+    /**
+     * Get the access token from SDK.
+     *
+     * @param string|null $resource The resource to get the token for
+     * @return string|null
+     */
+    public function getSdkAccessToken(?string $resource = null): ?string
+    {
+        if (!$this->sdkAdapter) {
+            return null;
+        }
+        return $this->sdkAdapter->getSdkAccessToken($resource);
+    }
+
+    /**
+     * Get the ID token from SDK.
+     *
+     * @return string|null
+     */
+    public function getSdkIdToken(): ?string
+    {
+        if (!$this->sdkAdapter) {
+            return null;
+        }
+        return $this->sdkAdapter->getSdkIdToken();
+    }
+
+    /**
+     * Get the refresh token from SDK.
+     *
+     * @return string|null
+     */
+    public function getSdkRefreshToken(): ?string
+    {
+        if (!$this->sdkAdapter) {
+            return null;
+        }
+        return $this->sdkAdapter->getSdkRefreshToken();
+    }
+
+    /**
+     * Check if user is authenticated via SDK.
+     *
+     * @return bool
+     */
+    public function isSdkAuthenticated(): bool
+    {
+        if (!$this->sdkAdapter) {
+            return false;
+        }
+        return $this->sdkAdapter->isAuthenticated();
+    }
+
+    /**
      * Discover OIDC configuration from Logto.
+     * Uses the official SDK if available, otherwise falls back to direct HTTP request.
      */
     public function discoverOidcConfig(): array
+    {
+        // Try to use SDK adapter first
+        if ($this->sdkAdapter) {
+            try {
+                $client = $this->sdkAdapter->getSdkClient();
+                $oidcCore = $client->oidcCore;
+                
+                // The OIDC metadata contains the configuration
+                $config = (array) $oidcCore->metadata;
+                
+                // Cache the configuration
+                cache()->put('logto_oidc_config', $config, 86400); // 24 hours
+                
+                return $config;
+            } catch (\Exception $e) {
+                Log::warning('SDK-based OIDC discovery failed, falling back to HTTP: ' . $e->getMessage());
+            }
+        }
+
+        // Fallback to direct HTTP request
+        return $this->discoverOidcConfigLegacy();
+    }
+
+    /**
+     * Legacy method for OIDC discovery (direct HTTP request).
+     */
+    protected function discoverOidcConfigLegacy(): array
     {
         try {
             if (!empty($this->oidcConfig['discovery_endpoint'])) {
@@ -80,8 +268,28 @@ class LogtoClient
 
     /**
      * Generate authorization URL for OIDC flow.
+     * Uses the official SDK if available, otherwise falls back to manual URL generation.
      */
-    public function getAuthorizationUrl(?string $state = null, ?string $nonce = null): string
+    public function getAuthorizationUrl(?string $state = null, ?string $nonce = null, ?string $redirectUri = null): string
+    {
+        // Try to use SDK adapter first
+        if ($this->sdkAdapter) {
+            try {
+                $sdkRedirectUri = $redirectUri ?? url($this->oidcConfig['redirect_uri'] ?? '/auth/logto/callback');
+                return $this->sdkAdapter->getSignInUrl($sdkRedirectUri);
+            } catch (\Exception $e) {
+                Log::warning('SDK-based authorization URL generation failed, falling back to manual: ' . $e->getMessage());
+            }
+        }
+
+        // Fallback to manual URL generation
+        return $this->getAuthorizationUrlLegacy($state, $nonce, $redirectUri);
+    }
+
+    /**
+     * Legacy method for generating authorization URL (manual generation).
+     */
+    protected function getAuthorizationUrlLegacy(?string $state = null, ?string $nonce = null, ?string $redirectUri = null): string
     {
         $config = $this->getOidcConfig();
         
@@ -89,7 +297,7 @@ class LogtoClient
             ?? $this->oidcConfig['authorization_endpoint'] 
             ?? $this->endpoint . '/oidc/auth';
         
-        $redirectUri = $this->oidcConfig['redirect_uri'] ?? '/auth/logto/callback';
+        $sdkRedirectUri = $redirectUri ?? ($this->oidcConfig['redirect_uri'] ?? '/auth/logto/callback');
         $scopes = $this->oidcConfig['scopes'] ?? ['openid', 'profile', 'email'];
         
         // Ensure 'openid' scope is present when using nonce parameter (OIDC requirement)
@@ -110,7 +318,7 @@ class LogtoClient
             'client_id' => $this->appId,
             'response_type' => 'code',
             'scope' => $scopes,
-            'redirect_uri' => url($redirectUri),
+            'redirect_uri' => url($sdkRedirectUri),
             'state' => $state,
             'nonce' => $nonce,
             'prompt' => 'consent', // Optional: force consent screen
@@ -131,8 +339,29 @@ class LogtoClient
 
     /**
      * Exchange authorization code for tokens.
+     * Uses the official SDK if available, otherwise falls back to manual token exchange.
      */
     public function exchangeCodeForTokens(string $code): array
+    {
+        // Try to use SDK adapter first
+        if ($this->sdkAdapter) {
+            try {
+                $redirectUri = url($this->oidcConfig['redirect_uri'] ?? '/auth/logto/callback');
+                $result = $this->sdkAdapter->handleSignInCallback($redirectUri);
+                return $result['tokens'];
+            } catch (\Exception $e) {
+                Log::warning('SDK-based token exchange failed, falling back to manual: ' . $e->getMessage());
+            }
+        }
+
+        // Fallback to manual token exchange
+        return $this->exchangeCodeForTokensLegacy($code);
+    }
+
+    /**
+     * Legacy method for exchanging code for tokens (manual HTTP request).
+     */
+    protected function exchangeCodeForTokensLegacy(string $code): array
     {
         try {
             $config = $this->getOidcConfig();
@@ -158,6 +387,8 @@ class LogtoClient
                 'grant_type' => 'authorization_code',
                 'code' => $code,
                 'redirect_uri' => url($redirectUri),
+                'client_id' => $this->appId,
+                'client_secret' => $this->appSecret,
             ];
             
             // Add PKCE code verifier
@@ -165,18 +396,27 @@ class LogtoClient
                 $params['code_verifier'] = session()->pull('logto_code_verifier');
             }
             
-            // Use Basic Auth for client authentication (required by Logto)
-            // client_id and client_secret are sent via Authorization header
+            // Try with Basic Auth + client credentials in body (some OIDC providers require both)
             $response = $this->httpClient->withBasicAuth($this->appId, $this->appSecret)
-                ->post($tokenEndpoint, [
-                    'form_params' => $params,
-                ]);
+                ->post($tokenEndpoint, $params);
             
             if ($response->failed()) {
-                throw LogtoException::apiError(
-                    'Failed to exchange code for tokens: ' . $response->body(),
-                    $response->status()
-                );
+                $errorData = $response->json() ?? [];
+                $errorMessage = 'Failed to exchange code for tokens';
+                
+                if (!empty($errorData['error_description'])) {
+                    $errorMessage .= ': ' . $errorData['error_description'];
+                } elseif (!empty($errorData['message'])) {
+                    $errorMessage .= ': ' . $errorData['message'];
+                } else {
+                    $errorMessage .= ': ' . $response->body();
+                }
+                
+                // Add debug information
+                $errorMessage .= '. Debug: code=' . substr($code, 0, 8) . '..., redirect_uri=' . $redirectUri
+                    . ', client_id=' . substr($this->appId, 0, 8) . '...';
+                
+                throw LogtoException::apiError($errorMessage, $response->status());
             }
             
             $data = $response->json();
@@ -208,13 +448,14 @@ class LogtoClient
             // Remove base URI from endpoint if present (to avoid double URLs)
             $tokenEndpoint = $this->stripBaseUrl($tokenEndpoint);
             
-            // Use Basic Auth for client authentication (required by Logto)
-            // client_id and client_secret are sent via Authorization header
+            // Try with Basic Auth + client credentials in body (some OIDC providers require both)
             $response = $this->httpClient->withBasicAuth($this->appId, $this->appSecret)
                 ->post($tokenEndpoint, [
                     'form_params' => [
                         'grant_type' => 'refresh_token',
                         'refresh_token' => $refreshToken,
+                        'client_id' => $this->appId,
+                        'client_secret' => $this->appSecret,
                     ],
                 ]);
             
@@ -233,8 +474,27 @@ class LogtoClient
 
     /**
      * Get user information using access token.
+     * Uses the official SDK if available, otherwise falls back to manual HTTP request.
      */
     public function getUserInfo(string $accessToken): array
+    {
+        // Try to use SDK adapter first
+        if ($this->sdkAdapter) {
+            try {
+                return $this->sdkAdapter->getUserInfo();
+            } catch (\Exception $e) {
+                Log::warning('SDK-based user info fetch failed, falling back to manual: ' . $e->getMessage());
+            }
+        }
+
+        // Fallback to manual HTTP request
+        return $this->getUserInfoLegacy($accessToken);
+    }
+
+    /**
+     * Legacy method for getting user info (manual HTTP request).
+     */
+    protected function getUserInfoLegacy(string $accessToken): array
     {
         try {
             $config = $this->getOidcConfig();
@@ -430,8 +690,27 @@ class LogtoClient
 
     /**
      * Logout user from Logto.
+     * Uses the official SDK if available, otherwise falls back to manual URL generation.
      */
     public function logout(?string $idToken = null, ?string $postLogoutRedirectUri = null): string
+    {
+        // Try to use SDK adapter first
+        if ($this->sdkAdapter) {
+            try {
+                return $this->sdkAdapter->getSignOutUrl($postLogoutRedirectUri, $idToken);
+            } catch (\Exception $e) {
+                Log::warning('SDK-based logout URL generation failed, falling back to manual: ' . $e->getMessage());
+            }
+        }
+
+        // Fallback to manual URL generation
+        return $this->logoutLegacy($idToken, $postLogoutRedirectUri);
+    }
+
+    /**
+     * Legacy method for logout (manual URL generation).
+     */
+    protected function logoutLegacy(?string $idToken = null, ?string $postLogoutRedirectUri = null): string
     {
         $config = $this->getOidcConfig();
         

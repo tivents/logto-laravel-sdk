@@ -14,6 +14,8 @@ Ein Laravel-Package zur Integration von Logto Authentication. Unterstützt OIDC 
 - ✅ **Blade Directives** - Einfache Integration in Blade-Templates
 - ✅ **Multi-Factor Authentication** - Unterstützung für Logto MFA
 - ✅ **Social Login** - Integration sozialer Anbieter über Logto
+- ✅ **Official Logto SDK Integration** - Direkte Nutzung des `logto/sdk` für maximale Kompatibilität
+- ✅ **Automatic Fallback** - Fallback auf manuelle Implementierung falls SDK nicht verfügbar
 
 ## Voraussetzungen
 
@@ -51,6 +53,13 @@ In `config/app.php` den Service Provider hinzufügen (ab Laravel 10 wird das aut
 ```bash
 php artisan vendor:publish --tag=logto-config
 ```
+
+### 4. SDK Integration aktivieren (optional)
+
+Das Package nutzt automatisch das offizielle `logto/sdk` für alle Authentifizierungs-Flows. 
+Die Integration ist bereits aktiviert und erfordert keine zusätzliche Konfiguration.
+
+Falls du das SDK explizit deaktivieren möchtest, kannst du den SDK Adapter in der Service Provider Registrierung entfernen.
 
 ### 4. Migration ausführen
 
@@ -119,6 +128,39 @@ LOGTO_GUARD_PROVIDER=users
 
 <!-- Oder manuell -->
 <a href="{{ route('logto.login') }}">Login mit Logto</a>
+
+#### Direkte SDK Methoden nutzen
+
+Das Package stellt auch direkte Zugriffsmethoden auf das offizielle Logto SDK bereit:
+
+```php
+use TIVENTS\LogtoLaravelSdk\Facades\Logto;
+
+// Login-URL mit dem offiziellen SDK generieren
+$loginUrl = Logto::getSdkSignInUrl('https://deine-domain.de/auth/logto/callback');
+
+// UserInfo mit dem offiziellen SDK abrufen
+$userInfo = Logto::getSdkUserInfo();
+
+// SDK-Session bereinigen
+Logto::clearSdkSession();
+
+// Prüfen ob der Benutzer über das SDK authentifiziert ist
+$isAuthenticated = Logto::isSdkAuthenticated();
+
+// SDK Access Token abrufen
+$accessToken = Logto::getSdkAccessToken();
+
+// SDK ID Token abrufen
+$idToken = Logto::getSdkIdToken();
+```
+
+**Vorteile der SDK-Methoden:**
+- ✅ **Offizielle Implementierung** - Nutzt die getesteten SDK-Funktionen
+- ✅ **PKCE automatisch** - Proof Key for Code Exchange wird vom SDK gehandhabt
+- ✅ **State Management** - CSRF-Schutz wird automatisch verwaltet
+- ✅ **Token Refresh** - Access Token Refresh wird automatisch durchgeführt
+- ✅ **Automatische Fallbacks** - Falls das SDK nicht verfügbar ist, wird auf die manuelle Implementierung zurückgegriffen
 
 <!-- Oder mit spezieller Redirect-URI -->
 <a href="{{ route('logto.login') }}?redirect_uri={{ url('/dashboard') }}">Login mit Logto</a>
@@ -309,13 +351,40 @@ LOGTO_LOGGING_LEVEL=debug
 
 ### Logto Facade
 
+#### Standardmethoden (mit Fallback auf manuelle Implementierung)
 ```php
-Logto::getAuthorizationUrl()
+Logto::getAuthorizationUrl(?string $state, ?string $nonce, ?string $redirectUri)
 Logto::exchangeCodeForTokens(string $code)
 Logto::refreshToken(string $refreshToken)
 Logto::getUserInfo(string $accessToken)
 Logto::validateIdToken(string $idToken, ?string $nonce)
 Logto::logout(?string $idToken, ?string $postLogoutRedirectUri)
+Logto::getAccessToken(string $userId)
+Logto::request(string $method, string $path, array $options, ?string $userId)
+```
+
+#### Offizielle SDK Methoden (direkter Zugriff auf logto/sdk)
+```php
+// Authentifizierung
+Logto::getSdkSignInUrl(string $redirectUri, array $extraParams = [])
+Logto::handleSdkCallback(string $redirectUri)
+Logto::getSdkSignOutUrl(?string $postLogoutRedirectUri, ?string $idTokenHint)
+
+// Token Management
+Logto::getSdkAccessToken(?string $resource = null)
+Logto::getSdkIdToken()
+Logto::getSdkRefreshToken()
+Logto::refreshSdkAccessToken()
+
+// Session Management
+Logto::clearSdkSession()
+Logto::isSdkAuthenticated()
+
+// Storage (für erweiterte Nutzung)
+Logto::getSdkAdapter()->get(StorageKey $key)
+Logto::getSdkAdapter()->set(StorageKey $key, ?string $value)
+Logto::getSdkAdapter()->delete(StorageKey $key)
+```
 Logto::getAccessToken(string $userId)
 Logto::request(string $method, string $path, array $options = [], ?string $userId = null)
 Logto::getUserByAccessToken(string $accessToken)
@@ -342,13 +411,87 @@ $tokenManager->getTokenType(string $userId)
 ### Tests ausführen
 
 ```bash
+# Alle Tests
 composer test
+
+# Nur Unit Tests
+./vendor/bin/pest tests/Unit
+
+# Nur Feature Tests
+./vendor/bin/pest tests/Feature
+
+# Nur SDK Adapter Tests
+./vendor/bin/pest tests/Unit/LogtoSdkAdapterTest.php
 ```
 
 ### Package neu bauen
 
 ```bash
 composer dump-autoload
+```
+
+## SDK Integration Details
+
+### Architektur
+
+Das Package nutzt einen **Adapter-Pattern** um das offizielle `logto/sdk` mit Laravel zu integrieren:
+
+```
+┌─────────────────────────────────────────────┐
+│              Laravel Application               │
+└─────────────────────────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────────┐
+│           LogtoServiceProvider                │
+│  - Registriert LogtoSdkAdapter                 │
+│  - Registriert LogtoClient                    │
+│  - Registriert AuthController                 │
+└─────────────────────────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────────┐
+│              LogtoSdkAdapter                   │
+│  - Implementiert Storage Interface            │
+│  - Erstellt LogtoConfig                       │
+│  - Erstellt LogtoClient (SDK)                 │
+│  - Übersetzt Laravel Session ↔ SDK Storage   │
+└─────────────────────────────────────────────┘
+                    │
+        ┌───────────┴───────────┐
+        ▼                       ▼
+┌─────────────────┐   ┌─────────────────┐
+│   LogtoClient    │   │    Logto SDK     │
+│ (Laravel Wrapper)│   │ (Offiziell)     │
+│                 │   │                 │
+│ - getAuthorizationUrl()│   │ - signIn()     │
+│ - exchangeCodeForTokens()│ │ - handleSignInCallback()│
+│ - Fallback Logik │   │ - fetchUserInfo()│
+└─────────────────┘   └─────────────────┘
+```
+
+### Fallback-Mechanismus
+
+Alle Hauptmethoden des `LogtoClient` versuchen zuerst das offizielle SDK zu nutzen. 
+Falls das SDK nicht verfügbar ist oder ein Fehler auftritt, wird automatisch auf 
+die manuelle Implementierung zurückgegriffen. Das gewährleistet maximale Kompatibilität.
+
+Beispiel:
+```php
+public function getAuthorizationUrl(...)
+{
+    // 1. Versuche SDK Adapter
+    if ($this->sdkAdapter) {
+        try {
+            return $this->sdkAdapter->getSignInUrl(...);
+        } catch (\Exception $e) {
+            Log::warning('SDK failed, falling back...');
+        }
+    }
+    
+    // 2. Fallback auf manuelle Implementierung
+    return $this->getAuthorizationUrlLegacy(...);
+}
 ```
 
 ## Mitwirken

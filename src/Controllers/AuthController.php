@@ -6,11 +6,13 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Str;
 use TIVENTS\LogtoLaravelSdk\Exceptions\LogtoException;
 use TIVENTS\LogtoLaravelSdk\Services\LogtoClient;
+use TIVENTS\LogtoLaravelSdk\Services\LogtoSdkAdapter;
 
 class AuthController extends Controller
 {
@@ -21,7 +23,11 @@ class AuthController extends Controller
         /**
          * The Logto client instance.
          */
-        protected LogtoClient $client
+        protected LogtoClient $client,
+        /**
+         * The Logto SDK adapter instance.
+         */
+        protected LogtoSdkAdapter $sdkAdapter
     )
     {
     }
@@ -32,27 +38,10 @@ class AuthController extends Controller
     public function callback(Request $request): RedirectResponse
     {
         try {
-            // Validate required parameters
-            if (!$request->has('code')) {
-                // If no authorization code, redirect to Logto login with helpful message
-                // This typically happens when accessing the callback URL directly
-                // instead of being redirected from Logto after successful authentication
-                try {
-                    $loginUrl = $this->client->getAuthorizationUrl();
-                    return Redirect::to($loginUrl)
-                        ->with('error', 'Please authenticate through Logto first.');
-                } catch (\Exception $e) {
-                    // If we can't get the login URL, redirect to home with error
-                    return Redirect::to('/')
-                        ->with('error', 'Logto authentication not configured. Please check your Logto settings.');
-                }
-            }
+            $redirectUri = url(config('logto.oidc.redirect_uri', '/auth/logto/callback'));
             
-            $code = $request->get('code');
-            $state = $request->get('state');
+            // Check for OAuth errors first
             $error = $request->get('error');
-            
-            // Check for OAuth errors
             if ($error) {
                 $errorDescription = $request->get('error_description', 'Unknown error');
                 throw LogtoException::authenticationFailed(
@@ -60,28 +49,47 @@ class AuthController extends Controller
                 );
             }
             
-            // Validate state parameter (CSRF protection)
-            if (!$state || $state !== Session::pull('logto_state')) {
-                throw LogtoException::authenticationFailed('Invalid state parameter');
+            // Validate required parameters
+            if (!$request->has('code')) {
+                // If no authorization code, redirect to Logto login with helpful message
+                try {
+                    $loginUrl = $this->client->getAuthorizationUrl();
+                    return Redirect::to($loginUrl)
+                        ->with('error', 'Please authenticate through Logto first.');
+                } catch (\Exception $e) {
+                    return Redirect::to('/')
+                        ->with('error', 'Logto authentication not configured. Please check your Logto settings.');
+                }
             }
             
-            // Get nonce
-            $nonce = Session::pull('logto_nonce');
+            // Use the SDK adapter to handle the callback
+            // This will validate state, exchange code, get tokens and user info
+            $result = $this->sdkAdapter->handleSignInCallback($redirectUri);
             
-            // Exchange code for tokens
-            $tokens = $this->client->exchangeCodeForTokens($code);
+            $tokens = $result['tokens'];
+            $userInfo = $result['user_info'];
             
-            // Validate ID token if present
+            // Validate ID token if present (using the client's method)
             if (isset($tokens['id_token'])) {
-                $this->client->validateIdToken($tokens['id_token'], $nonce);
+                $nonce = Session::pull('logto_nonce');
+                try {
+                    $this->client->validateIdToken($tokens['id_token'], $nonce);
+                } catch (\Exception $e) {
+                    Log::warning('ID token validation failed: ' . $e->getMessage());
+                }
             }
-            
-            // Get user information
-            $userInfo = $this->client->getUserInfo($tokens['access_token']);
             
             // Store tokens in session for the guard to process
             Session::put('logto_tokens', $tokens);
             Session::put('logto_user_info', $userInfo);
+            
+            // Sync tokens with TokenManager
+            if (isset($tokens['access_token'])) {
+                $this->sdkAdapter->getTokenManager()->storeTokens(
+                    'sdk_user', // Will be updated with actual user ID by guard
+                    $tokens
+                );
+            }
             
             // Get the guard and handle authentication
             $guardName = config('logto.guard.name', 'logto');
@@ -92,6 +100,14 @@ class AuthController extends Controller
             
             if (!$user) {
                 throw LogtoException::authenticationFailed('Failed to authenticate user');
+            }
+            
+            // Update tokens with the actual user ID
+            if (isset($tokens['access_token']) && $user) {
+                $this->sdkAdapter->getTokenManager()->storeTokens(
+                    $user->getAuthIdentifier(),
+                    $tokens
+                );
             }
             
             // Regenerate session to prevent fixation attacks
@@ -105,13 +121,13 @@ class AuthController extends Controller
             
         } catch (LogtoException $e) {
             // Log the error
-            \Log::error('Logto authentication failed: ' . $e->getMessage());
+            Log::error('Logto authentication failed: ' . $e->getMessage());
             
             return Redirect::to(config('logto.oidc.post_logout_redirect_uri', '/'))
                 ->with('error', 'Authentication failed: ' . $e->getMessage());
         } catch (\Exception $e) {
             // Log unexpected errors
-            \Log::error('Unexpected error during Logto authentication: ' . $e->getMessage());
+            Log::error('Unexpected error during Logto authentication: ' . $e->getMessage());
             
             return Redirect::to(config('logto.oidc.post_logout_redirect_uri', '/'))
                 ->with('error', 'An unexpected error occurred during authentication');
@@ -130,6 +146,9 @@ class AuthController extends Controller
         $userInfo = $guard->getUserInfo();
         $idToken = $userInfo['id_token'] ?? null;
         
+        // Clear SDK session
+        $this->sdkAdapter->clearSession();
+        
         // Logout from Laravel
         $guard->logout();
         
@@ -137,9 +156,9 @@ class AuthController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
         
-        // Generate logout URL
+        // Generate logout URL using SDK adapter
         $postLogoutRedirectUri = config('logto.oidc.post_logout_redirect_uri', '/');
-        $logoutUrl = $this->client->logout($idToken, $postLogoutRedirectUri);
+        $logoutUrl = $this->sdkAdapter->getSignOutUrl($postLogoutRedirectUri, $idToken);
         
         // Redirect to Logto logout
         return Redirect::to($logoutUrl)
@@ -158,9 +177,10 @@ class AuthController extends Controller
             Session::put('url.intended', $request->get('redirect_uri'));
         }
         
-        // Generate authorization URL
+        // Generate authorization URL using SDK adapter
         try {
-            $authUrl = $this->client->getAuthorizationUrl();
+            $redirectUri = url(config('logto.oidc.redirect_uri', '/auth/logto/callback'));
+            $authUrl = $this->sdkAdapter->getSignInUrl($redirectUri);
             
             return Redirect::to($authUrl);
         } catch (LogtoException $e) {

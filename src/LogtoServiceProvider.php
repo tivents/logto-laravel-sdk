@@ -16,6 +16,7 @@ use TIVENTS\LogtoLaravelSdk\Guards\LogtoGuard;
 use TIVENTS\LogtoLaravelSdk\Middleware\AuthenticateWithLogto;
 use TIVENTS\LogtoLaravelSdk\Middleware\EnsureEmailIsVerified;
 use TIVENTS\LogtoLaravelSdk\Services\LogtoClient;
+use TIVENTS\LogtoLaravelSdk\Services\LogtoSdkAdapter;
 use TIVENTS\LogtoLaravelSdk\Services\TokenManager;
 
 class LogtoServiceProvider extends ServiceProvider
@@ -34,13 +35,31 @@ class LogtoServiceProvider extends ServiceProvider
         // Register TokenManager
         $this->app->singleton(TokenManager::class, fn($app) => new TokenManager());
 
-        // Register LogtoClient
-        $this->app->singleton(LogtoClient::class, fn($app) => new LogtoClient(
+        // Register LogtoSdkAdapter
+        $this->app->singleton(LogtoSdkAdapter::class, fn($app) => new LogtoSdkAdapter(
             $app->make(TokenManager::class)
         ));
 
+        // Register LogtoClient
+        $this->app->singleton(LogtoClient::class, fn($app) => new LogtoClient(
+            $app->make(TokenManager::class),
+            $app->make(LogtoSdkAdapter::class)
+        ));
+
+        // Register AuthController with its dependencies
+        $this->app->bind(
+            'TIVENTS\LogtoLaravelSdk\Controllers\AuthController',
+            fn($app) => new \TIVENTS\LogtoLaravelSdk\Controllers\AuthController(
+                $app->make(LogtoClient::class),
+                $app->make(LogtoSdkAdapter::class)
+            )
+        );
+
         // Register the main Logto service
         $this->app->singleton('logto', fn($app) => $app->make(LogtoClient::class));
+
+        // Also bind the SDK adapter to the container for direct access
+        $this->app->bind(LogtoSdkAdapter::class, fn($app) => $app->make(LogtoSdkAdapter::class));
 
         // Register Auth Guard
         $this->registerAuthGuard();
@@ -201,6 +220,7 @@ class LogtoServiceProvider extends ServiceProvider
         return [
             'logto',
             LogtoClient::class,
+            LogtoSdkAdapter::class,
             TokenManager::class,
             LogtoGuard::class,
         ];

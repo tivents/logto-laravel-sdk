@@ -98,9 +98,21 @@ class TokenManager
 
     /**
      * Refresh the access token using the refresh token.
+     * Tries to use SDK adapter first, falls back to client refreshToken method.
      */
     public function refreshAccessToken(string $userId, LogtoClient $client): array
     {
+        // Try to use SDK adapter if available
+        if ($client->hasSdkAdapter()) {
+            try {
+                $response = $client->refreshSdkAccessToken();
+                $this->storeTokens($userId, $response);
+                return $response;
+            } catch (\Exception $e) {
+                // Fall back to manual refresh
+            }
+        }
+
         $refreshToken = $this->getRefreshToken($userId);
         
         if (!$refreshToken) {
@@ -111,6 +123,32 @@ class TokenManager
         $this->storeTokens($userId, $response);
         
         return $response;
+    }
+
+    /**
+     * Store tokens from SDK adapter result.
+     * This method ensures proper handling of tokens from the official SDK.
+     */
+    public function storeSdkTokens(string $userId, array $tokens, ?string $userInfo = null): void
+    {
+        // Normalize tokens array to match expected format
+        $normalizedTokens = [
+            'access_token' => $tokens['access_token'] ?? '',
+            'refresh_token' => $tokens['refresh_token'] ?? null,
+            'token_type' => $tokens['token_type'] ?? 'Bearer',
+            'expires_in' => $tokens['expires_in'] ?? $this->accessTokenLifetime,
+        ];
+
+        // If we have user info with ID token, we might extract expiration from there
+        if ($userInfo && is_array($userInfo)) {
+            // Try to get expiration from ID token claims if available
+            if (isset($userInfo['id_token_claims']['exp'])) {
+                $expiresAt = $userInfo['id_token_claims']['exp'];
+                $normalizedTokens['expires_in'] = max(0, $expiresAt - time());
+            }
+        }
+
+        $this->storeTokens($userId, $normalizedTokens);
     }
 
     /**
