@@ -289,7 +289,7 @@ class LogtoClient
     /**
      * Legacy method for generating authorization URL (manual generation).
      */
-    protected function getAuthorizationUrlLegacy(?string $state = null, ?string $nonce = null, ?string $redirectUri = null): string
+    public function getAuthorizationUrlLegacy(?string $state = null, ?string $nonce = null, ?string $redirectUri = null): string
     {
         $config = $this->getOidcConfig();
         
