@@ -9,6 +9,7 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Logto\Sdk\Oidc\OidcCore;
 use TIVENTS\LogtoLaravelSdk\Exceptions\LogtoException;
 
 class LogtoClient
