@@ -570,19 +570,17 @@ class LogtoClient
             $keys = [];
             
             foreach ($jwks['keys'] as $key) {
-                // Only include keys that have the required fields for RSA (n and e)
-                // Skip EC or other key types that don't have these fields
-                if (!isset($key['n']) || !isset($key['e'])) {
-                    continue;
-                }
-                
+                // Keep all key data, we'll handle different key types in buildPublicKey
                 $keys[] = [
                     'kty' => $key['kty'],
                     'use' => $key['use'],
                     'kid' => $key['kid'],
                     'alg' => $key['alg'],
-                    'n' => $key['n'],
-                    'e' => $key['e'],
+                    'n' => $key['n'] ?? null,
+                    'e' => $key['e'] ?? null,
+                    'x' => $key['x'] ?? null,
+                    'y' => $key['y'] ?? null,
+                    'crv' => $key['crv'] ?? null,
                 ];
             }
             
@@ -594,7 +592,7 @@ class LogtoClient
                 throw LogtoException::invalidToken('No matching key found for ID token');
             }
             
-            // Build the key for verification
+            // Build the key for verification based on key type
             $publicKey = $this->buildPublicKey($matchingKey);
             
             // Decode and verify
@@ -634,10 +632,27 @@ class LogtoClient
     }
 
     /**
-     * Build public key from JWK.
+     * Build public key from JWK based on key type.
      */
     protected function buildPublicKey(array $jwk): string
     {
+        if ($jwk['kty'] === 'EC') {
+            return $this->buildEcPublicKey($jwk);
+        }
+        
+        // Default to RSA
+        return $this->buildRsaPublicKey($jwk);
+    }
+
+    /**
+     * Build RSA public key from JWK.
+     */
+    protected function buildRsaPublicKey(array $jwk): string
+    {
+        if (!isset($jwk['n']) || !isset($jwk['e'])) {
+            throw LogtoException::invalidToken('RSA key is missing required fields n or e');
+        }
+        
         $modulus = $this->base64UrlDecode($jwk['n']);
         $exponent = $this->base64UrlDecode($jwk['e']);
         
@@ -652,6 +667,113 @@ class LogtoClient
         $binaryDer = $this->encodeDer($components);
         
         return "-----BEGIN PUBLIC KEY-----\n" . \base64_encode($binaryDer) . "\n-----END PUBLIC KEY-----";
+    }
+
+    /**
+     * Build EC public key from JWK (for ES256, ES384, ES512).
+     */
+    protected function buildEcPublicKey(array $jwk): string
+    {
+        if (!isset($jwk['x']) || !isset($jwk['y']) || !isset($jwk['crv'])) {
+            throw LogtoException::invalidToken('EC key is missing required fields x, y, or crv');
+        }
+        
+        $x = $this->base64UrlDecode($jwk['x']);
+        $y = $this->base64UrlDecode($jwk['y']);
+        $crv = $jwk['crv'];
+        
+        // Get OID for the curve
+        $oid = null;
+        if ($crv === 'P-256') {
+            $oid = '1.2.840.10045.3.1.7'; // prime256v1 / secp256r1
+        } elseif ($crv === 'P-384') {
+            $oid = '1.3.132.0.34'; // secp384r1
+        } elseif ($crv === 'P-521') {
+            $oid = '1.3.132.0.35'; // secp521r1
+        }
+        
+        if (!$oid) {
+            throw LogtoException::invalidToken('Unsupported EC curve: ' . $crv);
+        }
+        
+        // Build DER-encoded EC public key
+        // Structure: SEQUENCE (OID, BIT STRING)
+        $oidBytes = $this->encodeOidToDer($oid);
+        $publicKeyBytes = \chr(0x04) . $x . $y; // Uncompressed point format
+        $bitString = \chr(0x00) . $publicKeyBytes; // BIT STRING with 0 padding bits
+        
+        $innerSequence = $this->encodeDerSequenceBytes([$oidBytes, $bitString]);
+        
+        return "-----BEGIN PUBLIC KEY-----\n" . \base64_encode($innerSequence) . "\n-----END PUBLIC KEY-----";
+    }
+
+    /**
+     * Encode an OID (Object Identifier) to DER bytes.
+     */
+    protected function encodeOidToDer(string $oid): string
+    {
+        $components = array_map('intval', explode('.', $oid));
+        $first = $components[0];
+        $second = $components[1];
+        
+        // First two components: first * 40 + second
+        $firstByte = $first * 40 + $second;
+        
+        $bytes = [$firstByte];
+        
+        // Remaining components
+        for ($i = 2; $i < count($components); $i++) {
+            $component = $components[$i];
+            $parts = [];
+            
+            while ($component >= 0) {
+                $parts[] = $component & 0x7F;
+                $component = (int)($component >> 7);
+            }
+            
+            // Reverse parts and set high bit on all but last
+            $encoded = '';
+            for ($j = count($parts) - 1; $j >= 0; $j--) {
+                $byte = $parts[$j];
+                if ($j > 0) {
+                    $byte |= 0x80;
+                }
+                $encoded .= \chr($byte);
+            }
+            
+            $bytes = array_merge($bytes, str_split($encoded));
+        }
+        
+        return implode('', $bytes);
+    }
+
+    /**
+     * Encode a sequence of byte strings to DER.
+     */
+    protected function encodeDerSequenceBytes(array $byteStrings): string
+    {
+        $content = implode('', $byteStrings);
+        return $this->encodeDerTagLengthValue(0x30, $content);
+    }
+
+    /**
+     * Encode DER tag, length, and value.
+     */
+    protected function encodeDerTagLengthValue(int $tag, string $content): string
+    {
+        if (strlen($content) < 128) {
+            return \chr($tag) . \chr(strlen($content)) . $content;
+        }
+        
+        $lengthBytes = '';
+        $length = strlen($content);
+        while ($length > 0) {
+            $lengthBytes = \chr($length & 0xFF) . $lengthBytes;
+            $length = (int)($length >> 8);
+        }
+        $lengthBytes = \chr(0x80 | strlen($lengthBytes)) . $lengthBytes;
+        
+        return \chr($tag) . $lengthBytes . $content;
     }
 
     /**
