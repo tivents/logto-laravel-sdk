@@ -53,7 +53,7 @@ class AuthController extends Controller
             if (!$request->has('code')) {
                 // If no authorization code, redirect to Logto login with helpful message
                 try {
-                    $loginUrl = $this->client->getAuthorizationUrlLegacy();
+                    $loginUrl = $this->client->getAuthorizationUrl();
                     return Redirect::to($loginUrl)
                         ->with('error', 'Please authenticate through Logto first.');
                 } catch (\Exception $e) {
@@ -62,11 +62,11 @@ class AuthController extends Controller
                 }
             }
             
-            // Use the legacy client to handle the callback (consistent with redirectToLogto)
+            // Use the client to handle the callback (consistent with redirectToLogto)
             // This will exchange code for tokens and get user info
             $code = $request->get('code');
-            $tokens = $this->client->exchangeCodeForTokensLegacy($code);
-            $userInfo = $this->client->getUserInfoLegacy($tokens['access_token']);
+            $tokens = $this->client->exchangeCodeForTokens($code);
+            $userInfo = $this->client->getUserInfo($tokens['access_token']);
             
             $result = ['tokens' => $tokens, 'user_info' => $userInfo];
             
@@ -158,7 +158,7 @@ class AuthController extends Controller
         // Generate logout URL using manual method (avoid SDK memory issues)
         try {
             $postLogoutRedirectUri = config('logto.oidc.post_logout_redirect_uri', '/');
-            $logoutUrl = $this->client->logoutLegacy($idToken, $postLogoutRedirectUri);
+            $logoutUrl = $this->client->logout($idToken, $postLogoutRedirectUri);
             
             return Redirect::to($logoutUrl)
                 ->with('success', 'Successfully logged out');
@@ -182,11 +182,11 @@ class AuthController extends Controller
             Session::put('url.intended', $request->get('redirect_uri'));
         }
         
-        // Generate authorization URL using manual method
+        // Generate authorization URL
         // (SDK is used in callback where session is already established)
         try {
             $redirectUri = url(config('logto.oidc.redirect_uri', '/auth/logto/callback'));
-            $authUrl = $this->client->getAuthorizationUrlLegacy(null, null, $redirectUri);
+            $authUrl = $this->client->getAuthorizationUrl(null, null, $redirectUri);
             
             return Redirect::to($authUrl);
         } catch (LogtoException $e) {
