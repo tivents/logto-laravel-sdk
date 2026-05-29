@@ -535,24 +535,38 @@ class LogtoClient
     }
 
     /**
-     * Validate ID token.
+     * Get JWKS with caching.
      */
-    public function validateIdToken(string $idToken, ?string $nonce = null): array
+    protected function getJwks(): array
     {
-        try {
+        $cacheKey = 'logto_jwks_' . md5($this->endpoint);
+        
+        return cache()->remember($cacheKey, 86400, function () {
             $config = $this->getOidcConfig();
             $jwksUri = $this->stripBaseUrl(
                 $config['jwks_uri'] ?? $this->oidcConfig['jwks_uri'] ?? '/oidc/jwks'
             );
             
-            // Fetch JWKS
-            $jwksResponse = $this->httpClient->get($jwksUri);
+            // Fetch JWKS with extended timeout
+            $jwksResponse = $this->httpClient
+                ->withOptions(['timeout' => 60, 'connect_timeout' => 30])
+                ->get($jwksUri);
             
             if ($jwksResponse->failed()) {
-                throw LogtoException::apiError('Failed to fetch JWKS');
+                throw LogtoException::apiError('Failed to fetch JWKS: ' . $jwksResponse->body());
             }
             
-            $jwks = $jwksResponse->json();
+            return $jwksResponse->json();
+        });
+    }
+
+    /**
+     * Validate ID token.
+     */
+    public function validateIdToken(string $idToken, ?string $nonce = null): array
+    {
+        try {
+            $jwks = $this->getJwks();
             $keys = [];
             
             foreach ($jwks['keys'] as $key) {
